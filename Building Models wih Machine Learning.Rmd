@@ -5,9 +5,9 @@ date: "3/14/2021"
 output: pdf_document
 ---
 
-# Assignment
+# Project
 
-**Use the training and test datasets from the *titanic* R package to try the following machine learning classification algorithms.**  
+**Use the training and test datasets from the *titanic* R package to demonstrate the following machine learning classification algorithms.**  
 
 \vspace*{2\baselineskip}
 
@@ -25,24 +25,12 @@ output: pdf_document
 
 \vspace*{2\baselineskip}
 
-**Once you are comfortable running all of the models see if you can figure out how to use cross-validation to pick the best model.**
+**Demonstrate model selection with the help of cross-validation.**
    
 \vspace*{2\baselineskip}
 
-**Once you have picked the best model you should do the following:**
-
-\vspace*{2\baselineskip}
-
-**1. Re-run your chosen model on the full *titanic_train* dataset.**    
-     
-**2. Then produce predictions for the *titanic_test* dataset.  This is what you would submit in a .csv to kaggle in a competition.**
+**Use the best model tp prroduce predictions for the *titanic_test* dataset.**
   
-\vspace*{2\baselineskip}
-   
-**Extra Credit:**
-
-**Make one plot containing all of the ROC curves for the algorithms trained.**   
-   
 \clearpage   
 
 # Discussion  
