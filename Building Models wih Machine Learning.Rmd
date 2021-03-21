@@ -35,9 +35,9 @@ output: pdf_document
 
 # Discussion  
 
-To begin, I processed the data according to the steps provided in the assignment and ran the models, starting with the null, as given in the sample code provided. I then replaced some of the omitted variables and re-analyzed the results, finding greater accuracy with the expanded dataset.  
+I start by processing the and running the models, starting with the null.  
 
-After generating predictions based on all of the requested models using the provided code, I proceeded with an attempt to optimize the accuracy of the predictions by tuning the algorithms with cross-validation. Each model or algorithm was cross-validated with specific sets of parameters, I compared Cohen's \(\kappa\) for each set of predictions and the most accurate classifiers are reported for each algorithm. Those results are tabulated here:      
+After generating predictions based on all of the listed models, I optimize the accuracy of the predictions by tuning each algorithm with cross-validation. I compared Cohen's \(\kappa\) for each set of predictions and the most accurate classifiers are reported for each algorithm. Those results are tabulated here:      
 
 | ML Algorithm    | Accuracy | kappa |
 |-----------------|----------|-------|
@@ -49,11 +49,11 @@ After generating predictions based on all of the requested models using the prov
 
 : Accuracy and kappa for each algorithm tuned to optimum parameters.
 
-I produced two classifiers that tie for most accurate. The best classifiers I produced used random forests with the `ranger` package and a boosted C5.0 model with `xgboost`. 
+I produce two classifiers that tie for most accurate. The best classifiers I produce here use random forests with the `ranger` package and a boosted C5.0 model with `xgboost`. 
 
 A boosted C5.0 model using the `xgboost` package, tuned to just nine trees, produced the most accurate results through cross-validation. It achieves accuracy of 0.838 with \(\kappa = 0.641\) on the `titanic_training` set.  
 
-I used this classifier to generate the predictions that I turned in along with this document.  
+I used this classifier to generate the predictions that I published along with this document.  
 
 Another classifier built here achieves accuracy and \(\kappa\) equal to the predictions produced by the `xgboost` package. Tuning the `ranger` algorithm led me to a forest with 400 trees, each of which uses three predictors. The accuracy of this algorithm in cross-validation varies slightly with the random forests it chooses, but it is generally comparable to that of the boosted C5.0 model. 
 
@@ -236,7 +236,7 @@ ROC_null <- preds_p_null %>%
 
 # Model 1: kNN
 
-Having looked closely at the null model we may proceed to build our classifiers. We will begin with kNN.  
+Having looked closely at the null model I proceed to build some classifiers starting with kNN.  
 
 Here I use the `scale` function in R to normalize the data for use in kNN.   
 
@@ -429,7 +429,7 @@ preds_ranger <- titanic_train2_ranger %>%
 
 \vspace*{1\baselineskip}
 
-Accuracy and kappa ofour random forest.  
+Accuracy and kappa of our random forest.  
 
 \vspace*{.25\baselineskip}
 
@@ -554,7 +554,7 @@ ROC_glm <- preds_p_glm %>%
 
 # Model 5: Naive Bayes 
 
-Our last attempt at building a classifier will use a Naive Bayes model from the `klaR` package.   
+My last attempt at building a classifier will use a Naive Bayes model from the `klaR` package.   
    
 Training the model.       
     
