@@ -1,0 +1,997 @@
+---
+title: "Machine Learning in R"
+author: "Y. Paulsen"
+date: "3/14/2021"
+output: pdf_document
+---
+
+# Assignment
+
+**Use the training and test datasets from the *titanic* R package to try the following machine learning classification algorithms.**  
+
+\vspace*{2\baselineskip}
+
+**0. Null Model**  
+   
+**1. kNN (the sample code given did not scale or normalize, if you use this model you need to do that.)**   
+   
+**2. Boosted C5.0**  
+   
+**3. Random Forest**  
+   
+**4. Logistic Regression using regularization**  
+     
+**5. Naive Bayes**  
+
+\vspace*{2\baselineskip}
+
+**Once you are comfortable running all of the models see if you can figure out how to use cross-validation to pick the best model.**
+   
+\vspace*{2\baselineskip}
+
+**Once you have picked the best model you should do the following:**
+
+\vspace*{2\baselineskip}
+
+**1. Re-run your chosen model on the full *titanic_train* dataset.**    
+     
+**2. Then produce predictions for the *titanic_test* dataset.  This is what you would submit in a .csv to kaggle in a competition.**
+  
+\vspace*{2\baselineskip}
+   
+**Extra Credit:**
+
+**Make one plot containing all of the ROC curves for the algorithms trained.**   
+   
+\clearpage   
+
+# Discussion  
+
+To begin, I processed the data according to the steps provided in the assignment and ran the models, starting with the null, as given in the sample code provided. I then replaced some of the omitted variables and re-analyzed the results, finding greater accuracy with the expanded dataset.  
+
+After generating predictions based on all of the requested models using the provided code, I proceeded with an attempt to optimize the accuracy of the predictions by tuning the algorithms with cross-validation. Each model or algorithm was cross-validated with specific sets of parameters, I compared Cohen's \(\kappa\) for each set of predictions and the most accurate classifiers are reported for each algorithm. Those results are tabulated here:      
+
+| ML Algorithm    | Accuracy | kappa |
+|-----------------|----------|-------|
+| kNN             | 0.812    | 0.588 |
+| Boosted C5.0    | 0.838    | 0.641 |
+| Random Forests  | 0.838    | 0.641 |
+| Regularized GLM | 0.799    | 0.563 |
+| Naive Bayes     | 0.759    | 0.471 |
+
+: Accuracy and kappa for each algorithm tuned to optimum parameters.
+
+I produced two classifiers that tie for most accurate. The best classifiers I produced used random forests with the `ranger` package and a boosted C5.0 model with `xgboost`. 
+
+A boosted C5.0 model using the `xgboost` package, tuned to just nine trees, produced the most accurate results through cross-validation. It achieves accuracy of 0.838 with \(\kappa = 0.641\) on the `titanic_training` set.  
+
+I used this classifier to generate the predictions that I turned in along with this document.  
+
+Another classifier built here achieves accuracy and \(\kappa\) equal to the predictions produced by the `xgboost` package. Tuning the `ranger` algorithm led me to a forest with 400 trees, each of which uses three predictors. The accuracy of this algorithm in cross-validation varies slightly with the random forests it chooses, but it is generally comparable to that of the boosted C5.0 model. 
+
+I have only included one set of predictions, those made by the `xgboost` C5.0 model, along with this submission.  
+     
+\clearpage  
+
+# Code and comments  
+
+# Preprocessing  
+  
+```{r warning=FALSE, include=FALSE}
+library(pacman)
+library(titanic)
+library(tidyverse) 
+library(janitor) 
+library(naniar) 
+library(tidymodels) 
+library(kknn) 
+library(xgboost) 
+library(discrim) 
+library(knitr)
+library(ranger)
+library(glmnet)
+library(klaR)
+library(Boruta)
+```
+
+These steps rename columns and remove various id columns. 
+Then factor variables are converted to factors for analysis. 
+  
+```{r}
+titanic_train <- titanic_train %>% clean_names()
+
+titanic_train2 <- titanic_train %>% 
+  dplyr::select(-passenger_id, -name, -ticket, -cabin) %>%
+  mutate(
+    survived = as_factor(survived),
+    pclass = as_factor(pclass),
+    sex = as_factor(sex),
+    embarked = as_factor(embarked))
+```
+
+Repeat the above steps on the final dataset. 
+
+```{r}
+titanic_test <- titanic_test %>% clean_names()
+
+titanic_test2 <- titanic_test %>% 
+  dplyr::select(-passenger_id, -name, -ticket, -cabin) %>%
+  mutate(
+    pclass = as_factor(pclass),
+    sex = as_factor(sex),
+    embarked = as_factor(embarked))
+```
+
+Visualizing missing data.     
+  
+```{r fig.align='center', fig.height=4, fig.width=4.5}
+vis_miss(titanic_train2)
+```
+   
+\clearpage   
+
+## Preprocessing (continued)   
+
+Since the project at hand requires predictions on a blind dataset, I first split the training data into test and train sets and built models from the training set.      
+     
+Splitting training and test data from the `titanic_train` dataset. 
+   
+```{r}
+# set.seed(1701)
+titanic_train2_split <- initial_split(titanic_train2, prop = 0.8)
+```
+    
+\vspace*{2\baselineskip}
+
+`tidymodels` processing of training and testing sets: 
+
+remove all predictors with low variance
+mean-impute data in remaining columns   
+
+```{r}
+titanic_train2_recipe <- training(titanic_train2_split) %>%
+  recipe(survived ~ .) %>%
+  step_nzv(all_predictors()) %>%
+  step_meanimpute(age) %>%
+  prep()
+```
+
+\vspace*{2\baselineskip}
+
+Apply tidymodels recipe to training and testing data 
+
+```{r}
+titanic_train2_testing <- titanic_train2_recipe %>%
+  bake(testing(titanic_train2_split)) 
+
+titanic_train2_training <- juice(titanic_train2_recipe)
+```
+
+\clearpage  
+
+# Model 0: Null    
+
+Fitting the null model to the training data. (I have suppressed the output of this code.)   
+
+\vspace*{.25\baselineskip}
+  
+```{r echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+null_model(mode = "classification")
+
+titanic_train2_null <- null_model() %>%
+  set_mode("classification") %>%
+  fit(survived ~ ., data = titanic_train2_training)
+
+```
+
+\vspace*{1\baselineskip}
+  
+Predictions based on the null model.    
+
+\vspace*{.25\baselineskip}
+  
+```{r}
+preds_null <- titanic_train2_null %>%
+  predict(titanic_train2_testing) %>%
+  bind_cols(titanic_train2_testing) 
+```
+
+\vspace*{1\baselineskip}
+
+Accuracy and kappa of the null model.  
+
+\vspace*{.25\baselineskip}
+
+```{r}
+metrics_null <- preds_null %>%
+  metrics(truth = survived, estimate = .pred_class)
+kable(metrics_null[,c(1,3)], col.names = c("Metric", "Estimate"), 
+      caption = "Accuracy and kappa of the null model")
+```
+
+\vspace*{1\baselineskip}
+
+Null model confusion matrix. 
+
+\vspace*{.25\baselineskip}
+
+```{r}
+cm_null <- preds_null %>%
+  conf_mat(truth = survived, estimate = .pred_class)
+
+rownames(cm_null$table) <- c("Predicted Negative", "Predicted Positive")
+kable(cm_null$table, col.names = c("True Negative", "True Positive"), 
+      caption = "Confusion matrix for the null model")
+```
+
+\clearpage  
+
+## Model 0: Null (continued)    
+
+\vspace*{1\baselineskip}
+
+Looking at the ROC curve for the null model. As expected, it is a 1:1 line.  
+
+\vspace*{1.25\baselineskip}
+
+```{r fig.align='center', fig.height=5, fig.width=4.5}
+preds_p_null <- titanic_train2_null %>%
+  predict(titanic_train2_testing, type = "prob") %>%
+  bind_cols(titanic_train2_testing) 
+  
+ROC_null <- preds_p_null %>%   
+  roc_curve(survived, .pred_0) %>%
+  autoplot(); ROC_null
+```
+
+\clearpage  
+
+# Model 1: kNN
+
+Having looked closely at the null model we may proceed to build our classifiers. We will begin with kNN.  
+
+Here I use the `scale` function in R to normalize the data for use in kNN.   
+
+\vspace*{1.25\baselineskip}
+
+```{r}
+titanic_train2_training_kNN <- titanic_train2_training
+titanic_train2_training_kNN$age <- scale(titanic_train2_training_kNN$age)
+titanic_train2_training_kNN$fare <- scale(titanic_train2_training_kNN$fare)
+
+titanic_train2_testing_kNN <- titanic_train2_testing
+titanic_train2_testing_kNN$age <- scale(titanic_train2_testing_kNN$age)
+titanic_train2_testing_kNN$fare <- scale(titanic_train2_testing_kNN$fare)
+```
+
+\vspace*{1.25\baselineskip}
+
+Training the kNN model. 
+
+\vspace*{1\baselineskip}
+
+```{r}
+titanic_train2_knn <- nearest_neighbor(neighbors = 7) %>% 
+  set_engine("kknn") %>%
+  set_mode("classification") %>%
+  fit(survived ~ ., data = titanic_train2_training_kNN)
+```
+
+\vspace*{1\baselineskip}
+  
+Predictions based on kNN.    
+
+\vspace*{.25\baselineskip}
+  
+```{r}
+preds_knn <- titanic_train2_knn %>%
+  predict(titanic_train2_testing_kNN) %>%
+  bind_cols(titanic_train2_testing_kNN) 
+```
+
+\vspace*{1\baselineskip}
+
+Accuracy and kappa of kNN.  
+
+\vspace*{.25\baselineskip}
+
+```{r}
+metrics_knn <- preds_knn %>%
+  metrics(truth = survived, estimate = .pred_class)
+kable(metrics_knn[,c(1,3)], col.names = c("Metric", "Estimate"), 
+      caption = "Accuracy and kappa of the k-Nearest Neighbors Algorithm")
+```
+
+\clearpage  
+
+## Model 1: kNN (continued) 
+
+\vspace*{1\baselineskip}
+
+kNN confusion matrix. 
+
+\vspace*{.25\baselineskip}
+
+```{r}
+cm_knn <- preds_knn %>%
+  conf_mat(truth = survived, estimate = .pred_class)
+
+rownames(cm_knn$table) <- c("Predicted Negative", "Predicted Positive")
+kable(cm_knn$table, col.names = c("True Negative", "True Positive"), 
+      caption = "Confusion matrix for the k-Nearest Neighbors Algorithm")
+```
+   
+\vspace*{1\baselineskip}
+
+Looking at the ROC curve for the k-Nearest Neighbors Algorithm. 
+
+\vspace*{1.25\baselineskip}
+
+```{r fig.align='center', fig.height=4, fig.width=4.5}
+preds_p_knn <- titanic_train2_knn %>%
+  predict(titanic_train2_testing_kNN, type = "prob") %>%
+  bind_cols(titanic_train2_testing_kNN) 
+  
+ROC_knn <- preds_p_knn %>%   
+  roc_curve(survived, .pred_0) %>%
+  autoplot(); ROC_knn 
+```
+
+\clearpage  
+
+# Model 2: Boosted c5.0
+
+The next model we will look at is a Boosted C5.0.  
+
+Training the model. (I have suppressed the output of this code chunk.)  
+    
+```{r echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+titanic_train2_xgb <- boost_tree(trees = 20) %>% 
+  set_engine("xgboost") %>%
+  set_mode("classification") %>%
+  fit(survived ~ ., data = titanic_train2_training)
+```  
+  
+\vspace*{1\baselineskip}
+  
+Predictions based on the boosted C5.0.    
+
+\vspace*{.25\baselineskip}
+  
+```{r}
+preds_xgb <- titanic_train2_xgb %>%
+  predict(titanic_train2_testing) %>%
+  bind_cols(titanic_train2_testing) 
+```
+
+\vspace*{1\baselineskip}
+
+Accuracy and kappa of the boosted C5.0.  
+
+\vspace*{.25\baselineskip}
+
+```{r}
+metrics_xgb <- preds_xgb %>%
+  metrics(truth = survived, estimate = .pred_class)
+kable(metrics_xgb[,c(1,3)], col.names = c("Metric", "Estimate"), 
+      caption = "Accuracy and kappa of the boosted C5.0 model")
+```
+
+\vspace*{1\baselineskip}
+
+Boosted C5.0 confusion matrix. 
+
+\vspace*{.25\baselineskip}
+
+```{r}
+cm_xgb <- preds_xgb %>%
+  conf_mat(truth = survived, estimate = .pred_class)
+
+rownames(cm_xgb$table) <- c("Predicted Negative", "Predicted Positive")
+kable(cm_xgb$table, col.names = c("True Negative", "True Positive"), 
+      caption = "Confusion matrix for the boosted C5.0 model")
+```
+
+\clearpage  
+
+## Model 2: Boosted C5.0 (continued)    
+
+\vspace*{1\baselineskip}
+
+Looking at the ROC curve for the boosted C5.0. 
+
+\vspace*{1.25\baselineskip}
+
+```{r fig.align='center', fig.height=5, fig.width=4.5}
+preds_p_xgb <- titanic_train2_xgb %>%
+  predict(titanic_train2_testing, type = "prob") %>%
+  bind_cols(titanic_train2_testing) 
+  
+ROC_xgb <- preds_p_xgb %>%   
+  roc_curve(survived, .pred_0) %>%
+  autoplot(); ROC_xgb 
+```
+     
+\clearpage
+
+# Model 3: Random Forest 
+
+Next we will try a random forest algorithm with the ranger package.  
+   
+Training the model.   
+    
+```{r}
+titanic_train2_ranger <- rand_forest(trees = 100) %>% 
+  set_engine("ranger") %>%
+  set_mode("classification") %>%
+  fit(survived ~ ., data = titanic_train2_training)
+```    
+    
+\vspace*{1\baselineskip}
+  
+Predictions based on our random forest.    
+
+\vspace*{.25\baselineskip}
+  
+```{r}
+preds_ranger <- titanic_train2_ranger %>%
+  predict(titanic_train2_testing) %>%
+  bind_cols(titanic_train2_testing) 
+```
+
+\vspace*{1\baselineskip}
+
+Accuracy and kappa ofour random forest.  
+
+\vspace*{.25\baselineskip}
+
+```{r}
+metrics_ranger <- preds_ranger %>%
+  metrics(truth = survived, estimate = .pred_class)
+kable(metrics_ranger[,c(1,3)], col.names = c("Metric", "Estimate"), 
+      caption = "Accuracy and kappa of our random forest")
+```
+
+\vspace*{1\baselineskip}
+
+Random Forest confusion matrix. 
+
+\vspace*{.25\baselineskip}
+
+```{r}
+cm_ranger <- preds_ranger %>%
+  conf_mat(truth = survived, estimate = .pred_class)
+
+rownames(cm_ranger$table) <- c("Predicted Negative", "Predicted Positive")
+kable(cm_ranger$table, col.names = c("True Negative", "True Positive"), 
+      caption = "Confusion matrix for our random forest")
+```
+
+\clearpage  
+
+## Model 3: Random Forest (continued)    
+
+\vspace*{1\baselineskip}
+
+Looking at the ROC curve for our random forest. 
+
+\vspace*{1.25\baselineskip}
+
+```{r fig.align='center', fig.height=5, fig.width=4.5}
+preds_p_ranger <- titanic_train2_ranger %>%
+  predict(titanic_train2_testing, type = "prob") %>%
+  bind_cols(titanic_train2_testing) 
+  
+ROC_rf <- preds_p_ranger %>%   
+  roc_curve(survived, .pred_0) %>%
+  autoplot(); ROC_rf 
+```
+    
+\clearpage
+
+# Model 4: Logistic regression using regularization.   
+
+Our fourth model will be a logistic regression using regularization.   
+   
+Training the model.   
+      
+```{r}
+titanic_train2_glm <- logistic_reg(penalty = 0.001, mixture = 0.5) %>% 
+  set_engine("glmnet") %>%
+  set_mode("classification") %>%
+  fit(survived ~ ., data = titanic_train2_training)
+```        
+    
+\vspace*{1\baselineskip}
+  
+Predictions based on regularized GLM.    
+
+\vspace*{.25\baselineskip}
+  
+```{r}
+preds_glm <- titanic_train2_glm %>%
+  predict(titanic_train2_testing) %>%
+  bind_cols(titanic_train2_testing) 
+```
+
+\vspace*{1\baselineskip}
+
+Accuracy and kappa of regularized GLM.  
+
+\vspace*{.25\baselineskip}
+
+```{r}
+metrics_glm <- preds_glm %>%
+  metrics(truth = survived, estimate = .pred_class)
+kable(metrics_glm[,c(1,3)], col.names = c("Metric", "Estimate"), 
+      caption = "Accuracy and kappa of regularized GLM")
+```
+
+\vspace*{1\baselineskip}
+
+Regularized GLM confusion matrix. 
+
+\vspace*{.25\baselineskip}
+
+```{r}
+cm_glm <- preds_glm %>%
+  conf_mat(truth = survived, estimate = .pred_class)
+
+rownames(cm_glm$table) <- c("Predicted Negative", "Predicted Positive")
+kable(cm_glm$table, col.names = c("True Negative", "True Positive"), 
+      caption = "Confusion matrix for regularized GLM")
+```
+
+\clearpage  
+
+## Model 4: Regularized GLM (continued)    
+
+\vspace*{1\baselineskip}
+
+Looking at the ROC curve for regularized GLM. 
+
+\vspace*{1.25\baselineskip}
+
+```{r fig.align='center', fig.height=5, fig.width=4.5}
+preds_p_glm <- titanic_train2_glm %>%
+  predict(titanic_train2_testing, type = "prob") %>%
+  bind_cols(titanic_train2_testing) 
+  
+ROC_glm <- preds_p_glm %>%   
+  roc_curve(survived, .pred_0) %>%
+  autoplot(); ROC_glm 
+``` 
+
+\clearpage    
+
+# Model 5: Naive Bayes 
+
+Our last attempt at building a classifier will use a Naive Bayes model from the `klaR` package.   
+   
+Training the model.       
+    
+```{r}
+titanic_train2_nb <- naive_Bayes(Laplace = 1) %>% 
+  set_engine("klaR") %>%
+  set_mode("classification") %>%
+  fit(survived ~ ., data = titanic_train2_training)
+
+```    
+    
+\vspace*{1\baselineskip}
+  
+Predictions based on Naive Bayes.    
+
+\vspace*{.25\baselineskip}
+  
+```{r warning=FALSE}
+preds_nb <- titanic_train2_nb %>%
+  predict(titanic_train2_testing) %>%
+  bind_cols(titanic_train2_testing) 
+```
+
+\vspace*{1\baselineskip}
+
+Accuracy and kappa of Naive Bayes.  
+
+\vspace*{.25\baselineskip}
+
+```{r}
+metrics_nb <- preds_nb %>%
+  metrics(truth = survived, estimate = .pred_class)
+kable(metrics_nb[,c(1,3)], col.names = c("Metric", "Estimate"), 
+      caption = "Accuracy and kappa of Naive Bayes")
+```
+
+\vspace*{1\baselineskip}
+
+Naive Bayes confusion matrix. 
+
+\vspace*{.25\baselineskip}
+
+```{r}
+cm_nb <- preds_nb %>%
+  conf_mat(truth = survived, estimate = .pred_class)
+
+rownames(cm_nb$table) <- c("Predicted Negative", "Predicted Positive")
+kable(cm_nb$table, col.names = c("True Negative", "True Positive"), 
+      caption = "Confusion matrix for Naive Bayes")
+```
+
+
+\clearpage  
+
+## Model 5: Naive Bayes (continued)    
+
+\vspace*{1\baselineskip}
+
+Looking at the ROC curve for Naive Bayes. 
+
+\vspace*{1.25\baselineskip}
+
+```{r fig.align='center', fig.height=5, fig.width=4.5, warning=FALSE}
+preds_p_nb <- titanic_train2_nb %>%
+  predict(titanic_train2_testing, type = "prob") %>%
+  bind_cols(titanic_train2_testing) 
+  
+ROC_nb <- preds_p_nb %>%   
+  roc_curve(survived, .pred_0) %>%
+  autoplot(); ROC_nb 
+```    
+ 
+\clearpage  
+
+# Preprocessing data for cross-validation    
+
+The below steps are identical to those above with the exception that all of the `titanic_train2` data is used without dividing it into training and testing sets. It will be divided by the cross-validation programs on the following pages.
+  
+These steps rename columns and remove various id column. Then factor variables are converted to factors for analysis. 
+
+```{r}
+titanic_train <- titanic_train %>% clean_names()
+
+titanic_train2 <- titanic_train %>% 
+  dplyr::select(-passenger_id, -name, -ticket, -cabin) %>%
+  mutate(
+    survived = as_factor(survived),
+    pclass = as_factor(pclass),
+    sex = as_factor(sex),
+    embarked = as_factor(embarked))
+```
+
+Repeat the above steps on the final  test set. 
+
+```{r}
+titanic_test <- titanic_test %>% clean_names()
+
+titanic_test2 <- titanic_test %>% 
+  dplyr::select(-passenger_id, -name, -ticket, -cabin) %>%
+  mutate(
+    pclass = as_factor(pclass),
+    sex = as_factor(sex),
+    embarked = as_factor(embarked))
+```
+
+`tidymodels` processing of training and testing sets: 
+
+remove all predictors with low variance
+mean-impute data in remaining columns   
+
+```{r}
+titanic_traincv_recipe <- titanic_train2 %>%
+  recipe(survived ~ .) %>%
+  step_nzv(all_predictors()) %>%
+  step_meanimpute(age) %>%
+  prep()
+```
+
+Apply tidymodels recipe to training and testing data 
+
+```{r}
+titanic_train2_training <- juice(titanic_traincv_recipe)
+```
+
+Pre-processing for kNN  
+ 
+```{r}
+titanic_train2_training_kNN <- titanic_train2_training
+titanic_train2_training_kNN$age <- scale(titanic_train2_training_kNN$age)
+titanic_train2_training_kNN$fare <- scale(titanic_train2_training_kNN$fare)
+titanic_train2_training_kNN$sex <- as.numeric(as.factor(titanic_train2_training_kNN$sex))
+titanic_train2_training_kNN$embarked <- as.numeric(as.factor(titanic_train2_training_kNN$embarked))
+```
+
+\clearpage  
+
+# Optimizing models and Cross-validation   
+   
+```{r}
+# Size of subsets and sequence for subsetting       
+CV <- 10
+test_l <- nrow(titanic_train2_training)%/%CV  
+seq <- seq(by = test_l, length.out = CV+1)
+```
+
+# Cross-validation: Model 1: kNN
+
+```{r}
+test <- list(); train <- list(); pred_cv <- list(); results <- list(); metrics <- list()
+kappa <- c(); Acc <- c(); AUC <- c()
+
+for(i in 1:CV){
+  test_rows <- seq[i]:seq[i+1]
+  test[[i]] <- titanic_train2_training_kNN[test_rows,]
+  train[[i]] <- titanic_train2_training_kNN[-test_rows,]
+ 
+  model_cv <-  nearest_neighbor(neighbors =8) %>%
+    set_engine("kknn") %>%
+    set_mode("classification") %>%
+    fit(survived ~ ., data = train[[i]])
+  
+  pred_cv[[i]] <- model_cv %>%
+  predict(test[[i]]) %>%
+    bind_cols(test[[i]]) 
+  
+  results[[i]] <- bind_cols(truth = test[[i]]$survived, 
+                  estimate=(as.numeric(pred_cv[[i]]$.pred_class)-2)^2, 
+                  f_estimate = pred_cv[[i]]$.pred_class)
+  
+  metrics[[i]] <- results[[i]] %>% 
+    metrics(truth = truth, estimate = f_estimate)
+  kappa[i] <- metrics[[i]]$.estimate[2] 
+  Acc[i] <- metrics[[i]]$.estimate[1]
+  
+  auc <- results[[i]] %>%
+    roc_auc(truth = truth, estimate)
+  AUC[i] <- auc$.estimate
+}
+df <- data.frame(rbind(Accuracy = mean(Acc), AUC = mean(AUC), kappa = mean(kappa)))
+kable(df, col.names = c("Estimate"), 
+      caption = "Cross-validated metrics for the optimized kNN algorithm")
+```
+
+\clearpage  
+
+# Cross-validation: Model 2: xgboost  
+   
+```{r warning=FALSE, results='hide'}
+test <- list(); train <- list(); pred_cv <- list(); results <- list(); metrics <- list()
+kappa <- c(); Acc <- c(); AUC <- c()
+
+for(i in 1:CV){
+  test_rows <- seq[i]:seq[i+1]
+  test[[i]] <- titanic_train2_training[test_rows,]
+  train[[i]] <- titanic_train2_training[-test_rows,]
+ 
+ model_cv <-  boost_tree(trees = 9) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification") %>%
+  fit(survived ~ ., data = train[[i]])
+  
+  pred_cv[[i]] <- model_cv %>%
+  predict(test[[i]]) %>%
+  bind_cols(test[[i]]) 
+  
+  results[[i]] <- bind_cols(truth = test[[i]]$survived, 
+                 estimate=(as.numeric(pred_cv[[i]]$.pred_class)-2)^2, 
+                 f_estimate = pred_cv[[i]]$.pred_class)
+  
+  metrics[[i]] <- results[[i]] %>% 
+    metrics(truth = truth, estimate = f_estimate)
+  kappa[i] <- metrics[[i]]$.estimate[2] 
+  Acc[i] <- metrics[[i]]$.estimate[1]
+  
+  auc <- results[[i]] %>%
+    roc_auc(truth = truth, estimate)
+  AUC[i] <- auc$.estimate
+}
+```
+```{r}
+df <- data.frame(rbind(Accuracy = mean(Acc), AUC = mean(AUC), kappa = mean(kappa)))
+kable(df, col.names = c("Estimate"), 
+      caption = "Cross-validated metrics for the optimized Boosted C5.0 model")
+```
+
+\clearpage  
+
+# Cross-validation: Model 3: Random Forests   
+   
+```{r}
+
+test <- list(); train <- list(); pred_cv <- list(); results <- list(); metrics <- list()
+kappa <- c(); Acc <- c(); AUC <- c()
+
+for(i in 1:CV){
+  test_rows <- seq[i]:seq[i+1]
+  test[[i]] <- titanic_train2_training[test_rows,]
+  train[[i]] <- titanic_train2_training[-test_rows,]
+ 
+  model_cv <- rand_forest(mtry=3, trees = 400) %>% 
+    set_engine("ranger") %>%
+    set_mode("classification") %>%
+    fit(survived ~ ., data = train[[i]])
+  
+  pred_cv[[i]] <- model_cv %>%
+    predict(test[[i]]) %>%
+  bind_cols(test[[i]]) 
+  
+  results[[i]] <- bind_cols(truth = test[[i]]$survived, 
+                  estimate=(as.numeric(pred_cv[[i]]$.pred_class)-2)^2, 
+                  f_estimate = pred_cv[[i]]$.pred_class)
+  
+  metrics[[i]] <- results[[i]] %>% 
+    metrics(truth = truth, estimate = f_estimate)
+  kappa[i] <- metrics[[i]]$.estimate[2] 
+  Acc[i] <- metrics[[i]]$.estimate[1]
+  
+  auc <- results[[i]] %>%
+    roc_auc(truth = truth, estimate)
+  AUC[i] <- auc$.estimate
+}
+df <- data.frame(rbind(Accuracy = mean(Acc), AUC = mean(AUC), kappa = mean(kappa)))
+kable(df, col.names = c("Estimate"), 
+      caption = "Cross-validated metrics for the optimized Random Forest algorithm")
+```
+
+\clearpage  
+
+# Cross-validation: Model 4: Regularized GLM   
+  
+```{r}
+test <- list(); train <- list(); pred_cv <- list(); results <- list(); metrics <- list()
+kappa <- c(); Acc <- c(); AUC <- c()
+
+for(i in 1:CV){
+  test_rows <- seq[i]:seq[i+1]
+  test[[i]] <- titanic_train2_training[test_rows,]
+  train[[i]] <- titanic_train2_training[-test_rows,]
+ 
+ model_cv <-  logistic_reg(penalty = 0.001, mixture = 0.99) %>%
+  set_engine("glmnet") %>%
+  set_mode("classification") %>%
+  fit(survived ~ ., data = train[[i]])
+  
+  pred_cv[[i]] <- model_cv %>%
+  predict(test[[i]]) %>%
+  bind_cols(test[[i]]) 
+  
+  results[[i]] <- bind_cols(truth = test[[i]]$survived, 
+                 estimate=(as.numeric(pred_cv[[i]]$.pred_class)-2)^2, 
+                 f_estimate = pred_cv[[i]]$.pred_class)
+  
+  metrics[[i]] <- results[[i]] %>% 
+    metrics(truth = truth, estimate = f_estimate)
+  kappa[i] <- metrics[[i]]$.estimate[2] 
+  Acc[i] <- metrics[[i]]$.estimate[1]
+  
+  auc <- results[[i]] %>%
+    roc_auc(truth = truth, estimate)
+  AUC[i] <- auc$.estimate
+}
+df <- data.frame(rbind(Accuracy = mean(Acc), AUC = mean(AUC), kappa = mean(kappa)))
+kable(df, col.names = c("Estimate"), 
+      caption = "Cross-validated metrics for the optimized Regularized GLM model")
+```
+
+\clearpage  
+
+# Cross-validation: Model 5: Naive Bayes      
+    
+```{r warning=FALSE}
+test <- list(); train <- list(); pred_cv <- list(); results <- list(); metrics <- list()
+kappa <- c(); Acc <- c(); AUC <- c()
+
+for(i in 1:CV){
+  test_rows <- seq[i]:seq[i+1]
+  test[[i]] <- titanic_train2_training[test_rows,]
+  train[[i]] <- titanic_train2_training[-test_rows,]
+ 
+ model_cv <- naive_Bayes(Laplace = 7) %>%
+  set_engine("klaR") %>%
+  set_mode("classification") %>%
+  fit(survived ~ ., data = train[[i]])
+  
+  pred_cv[[i]] <- model_cv %>%
+  predict(test[[i]]) %>%
+  bind_cols(test[[i]]) 
+  
+  results[[i]] <- bind_cols(truth = test[[i]]$survived, 
+                 estimate=(as.numeric(pred_cv[[i]]$.pred_class)-2)^2, 
+                 f_estimate = pred_cv[[i]]$.pred_class)
+  
+  metrics[[i]] <- results[[i]] %>% 
+    metrics(truth = truth, estimate = f_estimate)
+  kappa[i] <- metrics[[i]]$.estimate[2] 
+  Acc[i] <- metrics[[i]]$.estimate[1]
+  
+  auc <- results[[i]] %>%
+    roc_auc(truth = truth, estimate)
+  AUC[i] <- auc$.estimate
+}
+df <- data.frame(rbind(Accuracy = mean(Acc), AUC = mean(AUC), kappa = mean(kappa)))
+kable(df, col.names = c("Estimate"), 
+      caption = "Cross-validated metrics for the optimized Naive Bayes model")
+```
+
+\clearpage  
+
+# Boruta Algorithm  
+
+To investigate the relative importance of my predictors I ran the Boruta algorithm from the `Boruta` package in R. 
+It confirmed the usefulness of all of my predictors in classifying survivorship on the Titanic data. 
+
+\vspace*{1.5\baselineskip}
+
+```{r}
+Boruta_titan <- Boruta(survived ~ ., data = titanic_train2_training, 
+                       mtry = 3, ntree = 400)
+Boruta_titan
+```
+
+\vspace*{1.5\baselineskip}
+
+## Visualizing the results  
+
+```{r}
+plot(Boruta_titan)
+```
+
+\clearpage 
+
+# Generating predicitions
+
+From the above we can see that the best classifier is a boosted C5.0 model using nine trees. It achieves mean \(\kappa = ..641\). With this result I will generate predictions on the blind test set. 
+
+## Preprocessing for final predictions    
+
+Earlier I re-processed and renamed datasets for use with numerous cross-validation programs. The dataset made for those analyses is the final dataset on which I should train my model:  
+
+\vspace*{1.5\baselineskip}
+
+```{r}
+dim(titanic_train2_training)
+```
+
+\vspace*{1\baselineskip}
+
+I must also apply the same processing steps to the `titanic_test` dataset.  
+
+The following code achieves processing steps which are performed on the training data elsewhere in this document.  
+  
+\vspace*{1.25\baselineskip}
+
+```{r}
+titan_t2 <- titanic_test2
+titan_t2$age <- impute_mean(titan_t2$age)
+titan_t2$fare <- impute_mean(titan_t2$fare)
+```
+
+\vspace*{1.25\baselineskip}
+    
+Here I train the final model and generate predictions on the final test set:
+
+\vspace*{1.25\baselineskip}
+
+```{r warning=FALSE, results='hide'}
+model_final <- boost_tree(trees = 9) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification") %>%
+  fit(survived ~ ., data = titanic_train2_training)
+
+preds_Final <- model_final %>%
+  predict(titan_t2) %>%
+  bind_cols(titan_t2)  
+```
+
+```{r}
+#write.csv(preds_Final, row.names = F, file = "C:/Users/yalep/Desktop/School
+#/Classes/Stat 652/Midterm-Final-2021/Yale_Paulsen_Midterm_Predictions.csv")
+```
+
+```{r}
+kable(head(preds_Final, 3),
+     caption="The first three rows of my predictions. The full file is included with this 
+     submission as a .csv file.")
+```
+
+
